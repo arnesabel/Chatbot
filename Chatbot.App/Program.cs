@@ -1,4 +1,4 @@
-namespace Chatbot
+namespace Chatbot.App
 {
     public class Program
     {
