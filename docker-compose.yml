@@ -1,0 +1,6 @@
+services:
+  chatbot.app:
+    image: ${DOCKER_REGISTRY-}chatbotapp
+    build:
+      context: .
+      dockerfile: Chatbot.App/Dockerfile
