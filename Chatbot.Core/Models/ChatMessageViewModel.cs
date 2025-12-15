@@ -9,5 +9,5 @@ public sealed record ChatMessageViewModel(DateTimeOffset SendAt, string Message,
 
     public string ApplyCSS => UserId == HubConstants.CHAT_BOT_ID
         ? (IsNotice ? "notice" : "received")
-        : "sent";
+        : "sent"; 
 }
