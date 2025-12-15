@@ -31,6 +31,8 @@ namespace Chatbot.Infrastructure.Data
 
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
 
+            SeedData(modelBuilder);
+
         }
         private void SeedData(ModelBuilder modelBuilder)
         {            
