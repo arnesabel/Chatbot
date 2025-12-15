@@ -33,7 +33,12 @@ public static class DataServiceExtensions
                || string.IsNullOrEmpty(port)
                || string.IsNullOrEmpty(user)
             ? configuration.GetConnectionString(AppDbContext.CONNECTION_STRING_NAME)
-            : $"Server={host}, {port};Database={database};User Id={user};Password={password};";
+            :    $"Server={host},{port};" +
+                $"Database={database};" +
+                $"User Id={user};" +
+                $"Password={password};" +
+                $"Encrypt=True;" +
+                $"TrustServerCertificate=True;";
 
         return connectionString;
 
