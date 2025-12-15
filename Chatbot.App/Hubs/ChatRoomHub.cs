@@ -1,32 +1,134 @@
-﻿using Microsoft.AspNetCore.SignalR;
+﻿using Chatbot.Core.Constants;
+using Chatbot.Core.Entities;
+using Chatbot.Core.Interface;
+using Chatbot.Core.Models;
+using Chatbot.Infrastructure.Data;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.DotNet.Scaffolding.Shared.Messaging;
+using Microsoft.EntityFrameworkCore;
 
 namespace Chatbot.App.Hubs;
 
+
 public class ChatRoomHub : Hub
 {
-    public async Task Broadcast(
-         string? userName,
-         int userId,
-         string? displayName,
-         string message
-         )
+    private readonly ILogger<ChatRoomHub> _logger;
+    private readonly IBotCommandService _botCommandService;
+    private readonly AppDbContext _context;
+    private readonly IBotCommandRequestService _botCommandRequestService;
+
+
+    public ChatRoomHub(
+        ILogger<ChatRoomHub> logger,
+        IBotCommandRequestService botCommandRequestService,
+        IBotCommandService botCommandService,
+        AppDbContext AppDbContext)
     {
-        await Clients.All.SendAsync("Broadcast",
-            userName,
-            userId,
-            displayName,
-            message);
+        _logger = logger;
+        _botCommandRequestService = botCommandRequestService;
+        _botCommandService = botCommandService;
+        _context = AppDbContext;
+    }
+
+    public async Task Broadcast(
+        ChatMessageViewModel chatMessage
+        )
+    {
+        if (_botCommandService.IsCommand(chatMessage.Message))
+        {
+            await ExecuteCommandInternal(chatMessage);
+
+            return;
+        }
+
+        chatMessage = await SaveMessage(chatMessage);
+
+        await BroadcastInternal(chatMessage);
+    }
+
+    private async Task ExecuteCommandInternal(ChatMessageViewModel chatMessage)
+    {
+        try
+        {
+            await BroadcastInternal(chatMessage);
+
+            var commandMessage = _botCommandService.GetCommandInformation(chatMessage.Message);
+
+            if (!string.IsNullOrWhiteSpace(commandMessage.Error))
+            {
+                chatMessage = await SaveMessage(ConstructBotChatMessage(commandMessage.Error));
+
+                await BroadcastInternal(chatMessage);
+
+                return;
+            }
+
+            await _botCommandRequestService.ExecuteCommand(commandMessage);
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Information Invalid Command : {CommandText}", chatMessage.Message);
+            return;
+        }
     }
 
     public override async Task OnConnectedAsync()
     {
-        Console.WriteLine($"{Context.ConnectionId} connected");
+        _logger.LogWarning($"{Context.ConnectionId} connected");
         await base.OnConnectedAsync();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        Console.WriteLine($"Disconnected {Context.ConnectionId} {exception?.Message}");
+        _logger.LogWarning($"Disconnected {Context.ConnectionId} {exception?.Message}");
         await base.OnDisconnectedAsync(exception);
+    }
+
+    private async Task<ChatMessageViewModel> SaveMessage(ChatMessageViewModel chatMessage)
+    {
+        var user = await _context.Users
+            .Where(x => x.Id == chatMessage.UserId)
+            .FirstOrDefaultAsync();
+
+        if (user == null)
+        {
+            return ConstructBotChatMessage("User not found");
+        }
+
+        var message = new ChatMessage
+        {
+            Message = chatMessage.Message,
+            UserId = chatMessage.UserId,
+            User = user,
+        };
+
+        _context.ChatMessages.Add(message);
+        await _context.SaveChangesAsync();
+
+        chatMessage = chatMessage with { SendAt = message.SendAt };
+
+        return chatMessage;
+
+    }
+
+    private ChatMessageViewModel ConstructBotChatMessage(string message)
+    {
+        var chatMessage = new ChatMessageViewModel(
+            DateTimeOffset.UtcNow,
+            message,
+            HubConstants.CHAT_BOT_ID,
+            HubConstants.CHAT_BOT_MAIL,
+            HubConstants.CHAT_BOT_NAME);
+
+        return chatMessage;
+    }
+
+    private async Task BroadcastInternal(
+        ChatMessageViewModel chatMessage,
+        CancellationToken ct = default
+    )
+    {
+        _logger.LogInformation("Broadcasting message : {chatMessage}", chatMessage);
+        await Clients.All.SendAsync(HubConstants.CHAT_ROOM_METHOD, chatMessage, ct);
     }
 }
