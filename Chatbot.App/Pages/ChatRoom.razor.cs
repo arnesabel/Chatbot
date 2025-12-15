@@ -69,6 +69,7 @@ public partial class ChatRoom : ComponentBase, IAsyncDisposable
 
             if (messages.Any())
             {
+                messages.Reverse();
                 Messages.AddRange(messages.Select(x => new ChatMessageViewModel(x.SendAt, x.Message, x.UserId, x.User.UserName, x.User.DisplayName)));
             }
 
