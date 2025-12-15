@@ -2,7 +2,8 @@
 @using Chatbot.App.Areas.Identity
 @using Chatbot.Core.Constants
 @inject NavigationManager Navigation
-@inject TokenProvider TokenProvider﻿
+@inject TokenProvider TokenProvider
+
 <h1>Chatbot Room</h1>
 
 @if (!string.IsNullOrWhiteSpace(_errorMessage))
@@ -13,7 +14,7 @@
 else
 {
     <div id="scrollbox">
-        @foreach (var message in Messages.OrderByDescending(x => x.SendAt))
+        @foreach (var message in Messages)
         {
             <div class="@message.ApplyCSS">
                 <div class="user">@message.DisplayName <small>(@message.UserName)</small></div>

@@ -19,18 +19,12 @@ public partial class ChatRoom : ComponentBase, IAsyncDisposable
     private string? _newMessage;
     private string? _errorMessage;
 
-    [Inject]
-    private NavigationManager NavigationManager { get; set; } = default!;
-    [Inject]
-    private UserManager<User> UserManager { get; set; } = default!;
-    [Inject]
-    private AppDbContext Context { get; set; } = default!;
-
-    [CascadingParameter]
-    public Task<AuthenticationState> AuthenticationState { get; set; } = default!;
+    [Inject] private NavigationManager NavigationManager { get; set; } = default!;
+    [Inject] private UserManager<User> UserManager { get; set; } = default!;
+    [Inject] private AppDbContext Context { get; set; } = default!;
+    [CascadingParameter] public Task<AuthenticationState> AuthenticationState { get; set; } = default!;
 
     private List<ChatMessageViewModel> Messages { get; set; } = new();
-
     private HubConnection? HubConnection { get; set; }
 
     protected override async Task OnInitializedAsync()
@@ -39,10 +33,9 @@ public partial class ChatRoom : ComponentBase, IAsyncDisposable
         var userClaimPrincipal = authState.User;
         var user = await UserManager.GetUserAsync(userClaimPrincipal);
 
-        if (!userClaimPrincipal.Identity?.IsAuthenticated ?? false
-            && user == null)
+        if (!userClaimPrincipal.Identity?.IsAuthenticated ?? false || user == null)
         {
-            _errorMessage = $"ERROR: You need to log in first to access the bot";
+            _errorMessage = "ERROR: You need to log in first to access the bot";
             _isChatting = false;
             return;
         }
@@ -53,12 +46,7 @@ public partial class ChatRoom : ComponentBase, IAsyncDisposable
 
         try
         {
-            // Start chatting and force refresh UI.
             _isChatting = true;
-            await Task.Delay(1);
-
-            // remove old messages if any
-            Messages.Clear();
 
             var messages = await Context.ChatMessages
                 .AsNoTracking()
@@ -67,22 +55,23 @@ public partial class ChatRoom : ComponentBase, IAsyncDisposable
                 .Take(50)
                 .ToListAsync();
 
-            if (messages.Any())
-            {
-                messages.Reverse();
-                Messages.AddRange(messages.Select(x => new ChatMessageViewModel(x.SendAt, x.Message, x.UserId, x.User.UserName, x.User.DisplayName)));
-            }
+            messages.Reverse(); 
+            Messages.AddRange(messages.Select(x =>
+                new ChatMessageViewModel(x.SendAt, x.Message, x.UserId, x.User.UserName, x.User.DisplayName)));
 
-            // Create the chat client
-            string baseUrl = NavigationManager.BaseUri;
-
-            var hubUrl = baseUrl.TrimEnd('/') + HubConstants.CHAT_ROOM_HUB;
+            // Setup SignalR connection
+            string hubUrl = NavigationManager.BaseUri.TrimEnd('/') + HubConstants.CHAT_ROOM_HUB;
 
             HubConnection = new HubConnectionBuilder()
                 .WithUrl(hubUrl)
                 .Build();
 
-            HubConnection.On<string?, int, string?, string>(HubConstants.CHAT_ROOM_METHOD, BroadcastMessage);
+            // Receive messages in real-time
+            HubConnection.On<ChatMessageViewModel>(HubConstants.CHAT_ROOM_METHOD, chatMessage =>
+            {
+                Messages.Add(chatMessage);
+                InvokeAsync(StateHasChanged);
+            });
 
             await HubConnection.StartAsync();
 
@@ -93,32 +82,6 @@ public partial class ChatRoom : ComponentBase, IAsyncDisposable
             _errorMessage = $"ERROR: Failed to start chat client: {e.Message}";
             _isChatting = false;
         }
-    }
-
-    private void BroadcastMessage(string? userName, int userId, string? displayName, string message)
-    {
-        var chatMessage = new ChatMessageViewModel(DateTimeOffset.UtcNow, message, userId, userName, displayName);
-
-        Messages.Add(chatMessage);
-
-        // Inform blazor the UI needs updating
-        InvokeAsync(StateHasChanged);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (!_isChatting)
-        {
-            return;
-        }
-
-        await SendBotMessage($"[Notice] {_displayName}({_username}) left chat room.");
-
-        await HubConnection!.StopAsync();
-        await HubConnection!.DisposeAsync();
-
-        HubConnection = null;
-        _isChatting = false;
     }
 
     private async Task SendBotMessage(string message)
@@ -147,18 +110,24 @@ public partial class ChatRoom : ComponentBase, IAsyncDisposable
 
     private async Task SendInternal(ChatMessageViewModel chatMessage)
     {
-        if (!_isChatting)
-        {
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(chatMessage.Message))
-        {
-            return;
-        }
+        if (!_isChatting || string.IsNullOrWhiteSpace(chatMessage.Message)) return;
 
         await HubConnection!.SendAsync(HubConstants.CHAT_ROOM_METHOD, chatMessage);
-
         _newMessage = string.Empty;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_isChatting) return;
+
+        await SendBotMessage($"[Notice] {_displayName}({_username}) left chat room.");
+
+        if (HubConnection != null)
+        {
+            await HubConnection.StopAsync();
+            await HubConnection.DisposeAsync();
+        }
+
+        _isChatting = false;
     }
 }
