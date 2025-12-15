@@ -1,6 +1,88 @@
+version: "3.9"
+
 services:
+
+  # -----------------------------
+  # SQL Server
+  # -----------------------------
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: chatbot-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "YourStrong!Passw0rd"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sql_data:/var/opt/mssql
+
+  # -----------------------------
+  # RabbitMQ
+  # -----------------------------
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: chatbot-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      # IMPORTANT: do NOT use guest
+      RABBITMQ_DEFAULT_USER: chatbot
+      RABBITMQ_DEFAULT_PASS: chatbot123
+
+  # -----------------------------
+  # Chat App (SignalR)
+  # -----------------------------
   chatbot.app:
     image: ${DOCKER_REGISTRY-}chatbotapp
     build:
       context: .
       dockerfile: Chatbot.App/Dockerfile
+    depends_on:
+      - sqlserver
+      - rabbitmq
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+
+      # Database (Docker)
+      DBHOST: sqlserver
+      DBPORT: "1433"
+      DBDATABASE: ChatBotDb
+      DBUSER: sa
+      DBPASSWORD: YourStrong!Passw0rd
+
+      # RabbitMQ (GetConnectionString-compatible)
+      ConnectionStrings__RabbitConnectionString: amqp://chatbot:chatbot123@rabbitmq:5672/
+
+  # -----------------------------
+  # Bot Worker
+  # -----------------------------
+  chatbot.bot:
+    image: ${DOCKER_REGISTRY-}chatbotbot
+    build:
+      context: .
+      dockerfile: Chatbot.Bot/Dockerfile
+    depends_on:
+      - sqlserver
+      - rabbitmq
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+
+      # Database (Docker)
+      DBHOST: sqlserver
+      DBPORT: "1433"
+      DBDATABASE: ChatBotDb
+      DBUSER: sa
+      DBPASSWORD: YourStrong!Passw0rd
+
+      # RabbitMQ (GetConnectionString-compatible)
+      ConnectionStrings__RabbitConnectionString: amqp://chatbot:chatbot123@rabbitmq:5672/
+
+# -----------------------------
+# Volumes
+# -----------------------------
+volumes:
+  sql_data:

@@ -13,8 +13,8 @@ public class BotResponseBackgroundService : BackgroundService
     private readonly IRabbitMqService _rabbitMqService;
 
     public BotResponseBackgroundService(
-        IRabbitMqService rabbitMqService, 
-        IHubContext<ChatRoomHub> chatRoomHubContext, 
+        IRabbitMqService rabbitMqService,
+        IHubContext<ChatRoomHub> chatRoomHubContext,
         ILoggerFactory loggerFactory)
     {
         _chatRoomHubContext = chatRoomHubContext;

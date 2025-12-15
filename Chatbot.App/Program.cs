@@ -1,28 +1,28 @@
 using Chatbot.App.Areas.Identity;
 using Chatbot.App.Hubs;
+using Chatbot.App.Services;
 using Chatbot.Core.Constants;
 using Chatbot.Core.Entities;
+using Chatbot.Core.Interface;
+using Chatbot.Core.Services;
 using Chatbot.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var connectionString = builder.Configuration.GetConnectionString(AppDbContext.CONNECTION_STRING_NAME)
-    ?? throw new InvalidOperationException($"Connection string '{AppDbContext.CONNECTION_STRING_NAME}' not found.");
-
-builder.Services.AddDbContext<AppDbContext>(options =>
-{
-    options.UseSqlServer(connectionString);
-});
+builder.Services
+    .AddAppDbContext(builder.Configuration);
 
 builder.Services
-    .AddDefaultIdentity<User>()
+    .AddDefaultIdentity<User>(options => options.SignIn.RequireConfirmedAccount = true)
     .AddEntityFrameworkStores<AppDbContext>();
 
-
 builder.Services.AddScoped<TokenProvider>();
+builder.Services.AddSingleton<IBotCommandService, BotCommandService>();
+builder.Services.AddSingleton<IBotCommandRequestService, BotCommandRequestService>();
+builder.Services.AddSingleton<IRabbitMqService, RabbitMqService>();
+builder.Services.AddHostedService<BotResponseBackgroundService>();
 
-// Add services to the container.
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 
